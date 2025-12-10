@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UnifiedEvent, EventSource, Severity, User } from '../types';
 import TimelineTopology from '../components/TimelineTopology';
 import { analyzeIncident } from '../services/geminiService';
-import { Share2, Bot, Terminal, Shield, FileText } from 'lucide-react';
+import { Share2, Bot, Terminal, Shield, FileText, ChevronDown, Clock } from 'lucide-react';
 
 // Mock Data Generation
 const generateMockEvents = (): UnifiedEvent[] => {
@@ -79,6 +79,15 @@ export default function IncidentDetail({ currentUser }: Props) {
   const [analyzing, setAnalyzing] = useState(false);
   const [apiKeyMissing, setApiKeyMissing] = useState(false);
 
+  const formatTime = (isoString: string) => {
+    return new Date(isoString).toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        second: '2-digit',
+        timeZone: currentUser.timezone
+    });
+  };
+
   const handleAnalyze = async () => {
     if (!process.env.API_KEY) {
       setApiKeyMissing(true);
@@ -102,14 +111,14 @@ export default function IncidentDetail({ currentUser }: Props) {
   };
 
   return (
-    <div className="grid grid-cols-3 gap-6 h-[calc(100vh-8rem)]">
+    <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 h-full">
       
       {/* Left Column: Visuals & List */}
-      <div className="col-span-2 flex flex-col gap-6 overflow-hidden">
-        <div className="flex items-center justify-between">
+      <div className="col-span-2 flex flex-col gap-6 lg:h-[calc(100vh-8rem)]">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-                <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-                    INC-3942: C2 Beaconing via PowerShell
+                <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
+                    INC-3942: C2 Beaconing
                     <span className="text-xs bg-red-500/20 text-red-500 px-2 py-1 rounded border border-red-500/30">CRITICAL</span>
                 </h1>
                 <p className="text-slate-500 text-sm mt-1">Cross-correlating EDR (CrowdStrike) and NDR (Corelight)</p>
@@ -119,27 +128,65 @@ export default function IncidentDetail({ currentUser }: Props) {
                   onClick={handleShare}
                   className="bg-cyber-800 hover:bg-cyber-700 text-slate-300 px-3 py-2 rounded text-sm border border-cyber-700 flex items-center gap-2"
                 >
-                    <Share2 className="w-4 h-4" /> Share Context
+                    <Share2 className="w-4 h-4" /> <span className="hidden md:inline">Share Context</span>
                 </button>
             </div>
         </div>
 
-        {/* The Topology Graph */}
-        <TimelineTopology events={events} onEventClick={setSelectedEvent} />
+        {/* Desktop View: Scatter Topology */}
+        <div className="hidden md:block h-64 md:h-96 shrink-0">
+          <TimelineTopology events={events} onEventClick={setSelectedEvent} timezone={currentUser.timezone} />
+        </div>
 
-        {/* Event List */}
-        <div className="flex-1 bg-cyber-800 rounded-lg border border-cyber-700 overflow-hidden flex flex-col">
+        {/* Mobile View: Vertical Timeline (Axis extending downwards) */}
+        <div className="md:hidden relative border-l-2 border-cyber-700 ml-4 space-y-8 my-4">
+          {events.map((event, index) => (
+            <div 
+                key={event.id} 
+                className="relative pl-6 cursor-pointer"
+                onClick={() => setSelectedEvent(event)}
+            >
+                {/* Timeline Node */}
+                <div className={`
+                    absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 border-cyber-900 
+                    ${event.severity === Severity.CRITICAL ? 'bg-red-500' : event.severity === Severity.HIGH ? 'bg-orange-500' : 'bg-cyber-accent'}
+                    ${selectedEvent?.id === event.id ? 'ring-2 ring-white' : ''}
+                `}></div>
+                
+                <div className={`p-3 rounded-lg border transition ${selectedEvent?.id === event.id ? 'bg-cyber-800 border-cyber-accent' : 'bg-cyber-800/50 border-cyber-700'}`}>
+                    <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="font-mono text-slate-400 flex items-center gap-1">
+                             <Clock className="w-3 h-3" /> {formatTime(event.timestamp)}
+                        </span>
+                        <span className={`px-1.5 py-0.5 rounded ${event.source === 'EDR' ? 'bg-purple-500/20 text-purple-400' : 'bg-sky-500/20 text-sky-400'}`}>
+                            {event.source}
+                        </span>
+                    </div>
+                    <h4 className="font-bold text-slate-200 text-sm">{event.eventType}</h4>
+                    <p className="text-xs text-slate-400 mt-1 truncate">{event.description}</p>
+                </div>
+
+                {/* Vertical Connector Line Extension (Visual only) */}
+                {index !== events.length - 1 && (
+                    <div className="absolute left-[7px] top-4 bottom-0 w-0.5 bg-cyber-700 md:hidden"></div>
+                )}
+            </div>
+          ))}
+        </div>
+
+        {/* Event List Table (Desktop Only or simplified) - Flex grow to fill remaining height on desktop */}
+        <div className="hidden md:flex flex-1 bg-cyber-800 rounded-lg border border-cyber-700 overflow-hidden flex-col min-h-[300px]">
           <div className="p-3 border-b border-cyber-700 bg-cyber-900/50 flex justify-between items-center">
             <h3 className="font-semibold text-sm text-slate-300">Unified Event Stream</h3>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-x-auto overflow-y-auto">
             <table className="w-full text-left text-sm text-slate-400">
               <thead className="bg-cyber-900 text-xs uppercase font-semibold text-slate-500 sticky top-0">
                 <tr>
-                  <th className="p-3">Time</th>
+                  <th className="p-3">Time ({currentUser.timezone})</th>
                   <th className="p-3">Source</th>
                   <th className="p-3">Type</th>
-                  <th className="p-3">Description</th>
+                  <th className="p-3 min-w-[200px]">Description</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-cyber-700">
@@ -149,7 +196,7 @@ export default function IncidentDetail({ currentUser }: Props) {
                     onClick={() => setSelectedEvent(event)}
                     className={`hover:bg-cyber-700 cursor-pointer transition ${selectedEvent?.id === event.id ? 'bg-cyber-700/50' : ''}`}
                   >
-                    <td className="p-3 whitespace-nowrap font-mono text-xs">{new Date(event.timestamp).toLocaleTimeString()}</td>
+                    <td className="p-3 whitespace-nowrap font-mono text-xs">{formatTime(event.timestamp)}</td>
                     <td className="p-3">
                         <span className={`text-xs px-2 py-0.5 rounded ${event.source === 'EDR' ? 'bg-purple-500/20 text-purple-400' : 'bg-sky-500/20 text-sky-400'}`}>
                             {event.source}
@@ -166,7 +213,7 @@ export default function IncidentDetail({ currentUser }: Props) {
       </div>
 
       {/* Right Column: AI & Details */}
-      <div className="col-span-1 bg-cyber-800 border-l border-cyber-700 flex flex-col -my-8 -mr-8 p-6 overflow-y-auto">
+      <div className="col-span-1 bg-cyber-800 lg:border-l border-cyber-700 flex flex-col p-6 rounded-lg lg:rounded-none lg:-my-8 lg:-mr-8 lg:overflow-y-auto">
         
         {/* Gemini Analysis Section */}
         <div className="mb-8">
@@ -211,6 +258,10 @@ export default function IncidentDetail({ currentUser }: Props) {
                 <div className="space-y-4">
                     <div className="p-4 bg-cyber-900 rounded border border-cyber-700">
                         <div className="grid grid-cols-2 gap-4 text-sm">
+                             <div className="col-span-2">
+                                <span className="text-slate-500 block text-xs uppercase">Timestamp</span>
+                                <span className="text-slate-200 font-mono">{formatTime(selectedEvent.timestamp)}</span>
+                            </div>
                             <div>
                                 <span className="text-slate-500 block text-xs uppercase">Event Type</span>
                                 <span className="text-slate-200">{selectedEvent.eventType}</span>
@@ -236,7 +287,7 @@ export default function IncidentDetail({ currentUser }: Props) {
                 </div>
             </div>
         ) : (
-             <div className="flex-1 flex flex-col items-center justify-center text-slate-600">
+             <div className="flex-1 flex flex-col items-center justify-center text-slate-600 py-12">
                 <FileText className="w-12 h-12 mb-2 opacity-20" />
                 <p>Select an event node to view details</p>
             </div>

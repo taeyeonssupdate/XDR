@@ -5,9 +5,10 @@ import { UnifiedEvent, EventSource, Severity } from '../types';
 interface TimelineTopologyProps {
   events: UnifiedEvent[];
   onEventClick: (event: UnifiedEvent) => void;
+  timezone: string;
 }
 
-const TimelineTopology: React.FC<TimelineTopologyProps> = ({ events, onEventClick }) => {
+const TimelineTopology: React.FC<TimelineTopologyProps> = ({ events, onEventClick, timezone }) => {
   
   // Transform data for the chart
   const data = events.map(e => ({
@@ -19,7 +20,11 @@ const TimelineTopology: React.FC<TimelineTopologyProps> = ({ events, onEventClic
   }));
 
   const formatXAxis = (tickItem: number) => {
-    return new Date(tickItem).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date(tickItem).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      timeZone: timezone 
+    });
   };
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -29,7 +34,7 @@ const TimelineTopology: React.FC<TimelineTopologyProps> = ({ events, onEventClic
         <div className="bg-slate-800 border border-slate-700 p-3 rounded shadow-xl text-xs z-50">
           <p className="font-bold text-white">{data.eventType}</p>
           <p className="text-slate-300">{data.vendor} ({data.source})</p>
-          <p className="text-slate-400">{new Date(data.timestamp).toLocaleString()}</p>
+          <p className="text-slate-400">{new Date(data.timestamp).toLocaleString(undefined, { timeZone: timezone })}</p>
           <p className={`mt-1 font-semibold ${
             data.severity === Severity.CRITICAL ? 'text-red-500' : 'text-yellow-500'
           }`}>{data.severity}</p>
@@ -41,7 +46,7 @@ const TimelineTopology: React.FC<TimelineTopologyProps> = ({ events, onEventClic
 
   return (
     <div className="w-full h-96 bg-slate-900/50 rounded-lg border border-slate-800 p-4 relative">
-      <h3 className="text-sm font-semibold text-slate-400 absolute top-4 left-4">Attack Timeline Topology</h3>
+      <h3 className="text-sm font-semibold text-slate-400 absolute top-4 left-4">Attack Timeline Topology ({timezone})</h3>
       <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-12 text-xs text-slate-500 font-bold">
         <span>EDR Layer</span>
         <span>NDR Layer</span>

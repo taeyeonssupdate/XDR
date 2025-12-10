@@ -9,6 +9,7 @@ export interface User {
   name: string;
   role: UserRole;
   avatar: string;
+  timezone: string; // Added timezone preference
 }
 
 export enum EventSource {
@@ -27,7 +28,7 @@ export enum Severity {
 // The unified schema that external vendors map to
 export interface UnifiedEvent {
   id: string;
-  timestamp: string; // ISO string
+  timestamp: string; // ISO string (UTC)
   source: EventSource;
   vendor: string; // e.g., "CrowdStrike", "Corelight"
   eventType: string; // e.g., "ProcessCreate", "DNSQuery"
