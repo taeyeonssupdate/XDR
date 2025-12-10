@@ -1,0 +1,5 @@
+{
+  "name": "NexusDefend XDR Platform",
+  "description": "A unified Network and Endpoint Detection and Response platform featuring AI-driven analysis, visual threat timelines, and vendor-agnostic event serialization.",
+  "requestFramePermissions": []
+}
