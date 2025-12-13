@@ -2,25 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { UnifiedEvent, EventSource, Severity, User } from '../types';
 import TimelineTopology from '../components/TimelineTopology';
 import { analyzeIncident } from '../services/geminiService';
-import { Share2, Bot, Terminal, Shield, FileText, ChevronDown, Clock } from 'lucide-react';
+import { fetchExtraHopDetections, simulateExtraHopData } from '../services/extraHopService';
+import { Share2, Bot, Terminal, Shield, FileText, ChevronDown, Clock, RefreshCw } from 'lucide-react';
 
-// Mock Data Generation
-const generateMockEvents = (): UnifiedEvent[] => {
-  const baseTime = new Date().getTime() - 1000 * 60 * 60; // 1 hour ago
+// Static EDR Mock Data (to mix with NDR)
+const generateStaticEDREvents = (): UnifiedEvent[] => {
+  const baseTime = new Date().getTime() - 1000 * 60 * 60; 
   return [
     {
-      id: 'e1',
-      timestamp: new Date(baseTime).toISOString(),
-      source: EventSource.NDR,
-      vendor: 'Corelight',
-      eventType: 'Phishing Link Click',
-      severity: Severity.MEDIUM,
-      description: 'User visited suspicious domain update-sys.net',
-      destIp: '192.168.1.50',
-      sourceIp: '10.0.0.5'
-    },
-    {
-      id: 'e2',
+      id: 'edr-1',
       timestamp: new Date(baseTime + 1000 * 60 * 2).toISOString(),
       source: EventSource.EDR,
       vendor: 'CrowdStrike',
@@ -32,18 +22,7 @@ const generateMockEvents = (): UnifiedEvent[] => {
       traceId: 't-1'
     },
     {
-      id: 'e3',
-      timestamp: new Date(baseTime + 1000 * 60 * 2.5).toISOString(),
-      source: EventSource.EDR,
-      vendor: 'CrowdStrike',
-      eventType: 'FileWrite',
-      severity: Severity.HIGH,
-      description: 'download.exe wrote file payload.ps1',
-      filePath: 'C:\\Temp\\payload.ps1',
-      traceId: 't-1'
-    },
-    {
-      id: 'e4',
+      id: 'edr-2',
       timestamp: new Date(baseTime + 1000 * 60 * 5).toISOString(),
       source: EventSource.EDR,
       vendor: 'CrowdStrike',
@@ -53,17 +32,6 @@ const generateMockEvents = (): UnifiedEvent[] => {
       processName: 'powershell.exe',
       rawPayload: '-Enc aGVsbG8gd29ybGQ=',
       traceId: 't-1'
-    },
-    {
-      id: 'e5',
-      timestamp: new Date(baseTime + 1000 * 60 * 6).toISOString(),
-      source: EventSource.NDR,
-      vendor: 'Darktrace',
-      eventType: 'C2Beacon',
-      severity: Severity.CRITICAL,
-      description: 'Outbound connection to known C2 server',
-      destIp: '45.33.22.11',
-      sourceIp: '10.0.0.5'
     }
   ];
 };
@@ -73,11 +41,37 @@ interface Props {
 }
 
 export default function IncidentDetail({ currentUser }: Props) {
-  const [events] = useState<UnifiedEvent[]>(generateMockEvents());
+  const [events, setEvents] = useState<UnifiedEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<UnifiedEvent | null>(null);
   const [analysis, setAnalysis] = useState<string>('');
   const [analyzing, setAnalyzing] = useState(false);
   const [apiKeyMissing, setApiKeyMissing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Load Data
+  const loadData = async () => {
+      setIsLoading(true);
+      
+      // 1. Get Static EDR events
+      const edrEvents = generateStaticEDREvents();
+
+      // 2. Get ExtraHop NDR events
+      // In a real app, you would pass process.env.EXTRAHOP_API_KEY
+      // Since we don't have a backend proxy here, we use the simulator
+      const ndrEvents = simulateExtraHopData();
+      
+      // Combine and sort
+      const combined = [...edrEvents, ...ndrEvents].sort((a,b) => 
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+
+      setEvents(combined);
+      setIsLoading(false);
+  };
+
+  useEffect(() => {
+      loadData();
+  }, []);
 
   const formatTime = (isoString: string) => {
     return new Date(isoString).toLocaleTimeString([], { 
@@ -94,7 +88,7 @@ export default function IncidentDetail({ currentUser }: Props) {
       // Simulate analysis for demo if key is missing
       setAnalyzing(true);
       setTimeout(() => {
-        setAnalysis(`**Analysis (Simulated - No API Key)**\n\n1. **Summary:** Phishing vector leading to C2 communication. User clicked link -> Payload dropped -> PowerShell execution -> C2 Beacon.\n2. **Root Cause:** User Training / Lack of URL filtering.\n3. **Remediation:** Isolate host 10.0.0.5, block IP 45.33.22.11.`);
+        setAnalysis(`**Analysis (Simulated - No API Key)**\n\n1. **Summary:** Correlated NDR and EDR activity detected. ExtraHop observed DC Synchronization attempts (DCSync) from 10.10.5.55 targeting the Domain Controller. Coinciding with this, CrowdStrike detected encoded PowerShell execution on the same source host.\n2. **Root Cause:** Compromised credentials on host 10.10.5.55 leading to lateral movement attempt.\n3. **Remediation:** \n   - Isolate 10.10.5.55 via EDR.\n   - Reset credentials for finance_admin.\n   - Investigate DC logs for successful replication.`);
         setAnalyzing(false);
       }, 1500);
       return;
@@ -118,12 +112,19 @@ export default function IncidentDetail({ currentUser }: Props) {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
                 <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2 flex-wrap">
-                    INC-3942: C2 Beaconing
+                    INC-3942: Active Breach
                     <span className="text-xs bg-red-500/20 text-red-500 px-2 py-1 rounded border border-red-500/30">CRITICAL</span>
                 </h1>
-                <p className="text-slate-500 text-sm mt-1">Cross-correlating EDR (CrowdStrike) and NDR (Corelight)</p>
+                <p className="text-slate-500 text-sm mt-1">Cross-correlating EDR (CrowdStrike) and NDR (ExtraHop Reveal(x))</p>
             </div>
             <div className="flex gap-2">
+                <button 
+                    onClick={loadData} 
+                    className="bg-cyber-800 hover:bg-cyber-700 text-slate-300 p-2 rounded border border-cyber-700"
+                    title="Refresh Data"
+                >
+                    <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                </button>
                 <button 
                   onClick={handleShare}
                   className="bg-cyber-800 hover:bg-cyber-700 text-slate-300 px-3 py-2 rounded text-sm border border-cyber-700 flex items-center gap-2"
@@ -270,16 +271,34 @@ export default function IncidentDetail({ currentUser }: Props) {
                                 <span className="text-slate-500 block text-xs uppercase">Vendor</span>
                                 <span className="text-slate-200">{selectedEvent.vendor}</span>
                             </div>
+                            
+                            {/* Dynamic fields based on source */}
+                            {selectedEvent.sourceIp && (
+                                <div className="col-span-2">
+                                    <span className="text-slate-500 block text-xs uppercase">Source IP / Host</span>
+                                    <span className="text-slate-200 font-mono">{selectedEvent.sourceIp}</span>
+                                </div>
+                            )}
+                            {selectedEvent.destIp && (
+                                <div className="col-span-2">
+                                    <span className="text-slate-500 block text-xs uppercase">Destination IP</span>
+                                    <span className="text-slate-200 font-mono">{selectedEvent.destIp}</span>
+                                </div>
+                            )}
+
                             <div className="col-span-2">
-                                <span className="text-slate-500 block text-xs uppercase">Raw Description</span>
+                                <span className="text-slate-500 block text-xs uppercase">Description</span>
                                 <span className="text-slate-300 font-mono text-xs">{selectedEvent.description}</span>
                             </div>
+                            
                             {selectedEvent.rawPayload && (
                                 <div className="col-span-2">
                                     <span className="text-slate-500 block text-xs uppercase">Payload</span>
-                                    <code className="block bg-black p-2 rounded text-green-500 font-mono text-xs overflow-x-auto mt-1">
-                                        {selectedEvent.rawPayload}
-                                    </code>
+                                    <div className="bg-black p-2 rounded mt-1 overflow-x-auto max-h-40">
+                                        <pre className="text-green-500 font-mono text-xs">
+                                            {selectedEvent.rawPayload}
+                                        </pre>
+                                    </div>
                                 </div>
                             )}
                         </div>

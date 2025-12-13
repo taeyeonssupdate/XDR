@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Server, ShieldAlert, Activity, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { User } from '../types';
+import { User, UnifiedEvent } from '../types';
+import { simulateExtraHopData } from '../services/extraHopService';
 
 interface DashboardProps {
   currentUser: User;
@@ -22,13 +23,18 @@ const StatCard = ({ title, value, label, icon: Icon, color }: any) => (
   </div>
 );
 
-const IncidentRow = ({ id, name, severity, time, status }: any) => (
+const IncidentRow = ({ id, name, severity, time, status, vendor }: any) => (
   <div className="grid grid-cols-2 md:grid-cols-12 gap-4 py-4 border-b border-cyber-700 hover:bg-cyber-700/30 transition items-center px-4 -mx-4">
     <div className="col-span-2 md:col-span-2 font-mono text-sm text-cyber-accent">{id}</div>
-    <div className="col-span-2 md:col-span-4 font-medium text-slate-200 truncate">{name}</div>
+    <div className="col-span-2 md:col-span-4 font-medium text-slate-200 truncate">
+        {name}
+        <span className="ml-2 text-[10px] text-slate-500 bg-cyber-900 px-1 rounded border border-cyber-700">{vendor}</span>
+    </div>
     <div className="col-span-1 md:col-span-2">
       <span className={`px-2 py-1 rounded text-xs font-bold ${
-        severity === 'Critical' ? 'bg-red-500/10 text-red-500' : 'bg-orange-500/10 text-orange-500'
+        severity === 'Critical' ? 'bg-red-500/10 text-red-500' : 
+        severity === 'High' ? 'bg-orange-500/10 text-orange-500' :
+        'bg-yellow-500/10 text-yellow-500'
       }`}>
         {severity}
       </span>
@@ -43,6 +49,30 @@ const IncidentRow = ({ id, name, severity, time, status }: any) => (
 );
 
 export default function Dashboard({ currentUser }: DashboardProps) {
+  const [recentIncidents, setRecentIncidents] = useState<UnifiedEvent[]>([]);
+
+  useEffect(() => {
+    // In a real scenario, this would call fetchExtraHopDetections(process.env.EXTRAHOP_API_KEY)
+    // combined with EDR fetch calls.
+    const ndrEvents = simulateExtraHopData();
+    
+    // Add some static EDR events for contrast
+    const edrEvents: UnifiedEvent[] = [
+        {
+            id: "edr-991",
+            timestamp: new Date().toISOString(),
+            source: 'EDR' as any,
+            vendor: 'CrowdStrike',
+            eventType: "Suspicious PowerShell Execution",
+            severity: 'Critical' as any,
+            description: "Encoded command line detected",
+            sourceIp: "10.10.5.55"
+        }
+    ];
+
+    setRecentIncidents([...ndrEvents, ...edrEvents].sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+  }, []);
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -55,32 +85,32 @@ export default function Dashboard({ currentUser }: DashboardProps) {
       {/* Grid: 1 col on mobile, 2 on tablet, 4 on desktop */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
-          title="Active Incidents" 
-          value="12" 
-          label="+2 from last hour" 
+          title="Active Detections" 
+          value={recentIncidents.length.toString()} 
+          label="Unified Stream" 
           icon={ShieldAlert} 
           color="text-red-500" 
         />
         <StatCard 
-          title="EDR Events (24h)" 
+          title="EDR Signals" 
           value="45.2k" 
-          label="CrowdStrike, SentinelOne" 
+          label="Endpoints Monitored" 
           icon={Server} 
           color="text-purple-500" 
         />
         <StatCard 
-          title="NDR Flows (24h)" 
+          title="NDR Analysis" 
           value="1.2m" 
-          label="Corelight, Darktrace" 
+          label="Flows Analyzed" 
           icon={Activity} 
           color="text-sky-500" 
         />
         <StatCard 
           title="Threat Score" 
-          value="Medium" 
-          label="Elevated scanning detected" 
+          value="High" 
+          label="Critical Assets Targeted" 
           icon={AlertTriangle} 
-          color="text-yellow-500" 
+          color="text-orange-500" 
         />
       </div>
 
@@ -95,30 +125,16 @@ export default function Dashboard({ currentUser }: DashboardProps) {
           <div className="col-span-2 text-right">ACTION</div>
         </div>
         <div className="flex flex-col">
-          <IncidentRow 
-            id="INC-3942" 
-            name="Suspicious PowerShell Execution via Word Macro" 
-            severity="Critical" 
-            time="10 min ago" 
-          />
-          <IncidentRow 
-            id="INC-3941" 
-            name="Lateral Movement Detected (SMB Exec)" 
-            severity="Critical" 
-            time="45 min ago" 
-          />
-          <IncidentRow 
-            id="INC-3938" 
-            name="Data Exfiltration to Unknown IP" 
-            severity="High" 
-            time="2 hours ago" 
-          />
-          <IncidentRow 
-            id="INC-3935" 
-            name="Potential Brute Force - RDP" 
-            severity="Medium" 
-            time="4 hours ago" 
-          />
+          {recentIncidents.map(inc => (
+              <IncidentRow 
+                key={inc.id}
+                id={inc.id} 
+                name={inc.eventType} 
+                severity={inc.severity} 
+                vendor={inc.vendor}
+                time={new Date(inc.timestamp).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit', timeZone: currentUser.timezone })} 
+              />
+          ))}
         </div>
       </div>
     </div>
